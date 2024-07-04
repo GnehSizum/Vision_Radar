@@ -209,6 +209,20 @@ def video_capture_get():
             time.sleep(0.016) # 60fps
 
 
+def video_test_get():
+    global camera_image
+    video = cv2.VideoCapture('/home/mumu/Videos/test2.avi')
+    while video.isOpened():
+        ret, frame = video.read()
+        if not ret: 
+            break
+        # numpy_image = np.asarray(frame)
+        # camera_image = cv2.cvtColor(numpy_image, cv2.COLOR_RGB2BGR)
+        camera_image = frame
+        time.sleep(0.016)
+    video.release()
+
+
 # 串口发送线程
 def ser_send():
     seq = 0
@@ -487,7 +501,7 @@ detector_next = YOLOv5Detector(weights_path_next, data='yaml/armor.yaml', conf_t
 
 ser1 = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)  # 串口，替换 'COM1' 为你的串口号
 # 图像测试模式（获取图像根据自己的设备，在）
-camera_mode = 'test'  # 'test':测试模式,'hik':海康相机,'video':USB相机（videocapture）
+camera_mode = 'vtest'  # 'test':测试模式,'hik':海康相机,'video':USB相机（videocapture）
 
 
 # 串口接收线程
@@ -508,6 +522,9 @@ elif camera_mode == 'video':
     thread_camera.start()
 elif camera_mode == 'galaxy':
     thread_camera = threading.Thread(target=gx_camera_get, daemon=True)
+    thread_camera.start()
+elif camera_mode == 'vtest':
+    thread_camera = threading.Thread(target=video_test_get, daemon=True)
     thread_camera.start()
 
 while camera_image is None:
