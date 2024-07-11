@@ -455,6 +455,11 @@ def ser_send():
                     if all_filter_data.get('B4', False):
                         seq = send_point_B('B4', seq, all_filter_data)
                         send_count += 1
+                # 步兵5号
+                if not guess_list.get('B5'):
+                    if all_filter_data.get('B5', False):
+                        seq = send_point_B('B5', seq, all_filter_data)
+                        send_count += 1
                 # 如果信道未满，发送工程
                 if send_count < 4:
                     if not guess_list.get('B2') and all_filter_data.get('B2', False):
@@ -485,6 +490,11 @@ def ser_send():
                     if all_filter_data.get('R4', False):
                         seq = send_point_R('R4', seq, all_filter_data)
                         send_count += 1
+                # 步兵5号
+                if not guess_list.get('R5'):
+                    if all_filter_data.get('R5', False):
+                        seq = send_point_R('R5', seq, all_filter_data)
+                        send_count += 1
                 # 如果信道未满，发送工程
                 if send_count < 4:
                     if not guess_list.get('R2') and all_filter_data.get('R2', False):
@@ -502,26 +512,23 @@ def ser_send():
                     guess_value['R2'] = guess_value_now.get('R2')
                     guess_value['R7'] = guess_value_now.get('R7')
 
-            # 判断飞镖的目标是否切换，切换则尝试发动双倍易伤
-            if target != target_last and target != 0:
-                target_last = target
-                # 有双倍易伤机会，并且当前没有在双倍易伤
-                if double_vulnerability_chance > 0 and opponent_double_vulnerability == 0:
-                    time_e = time.time()
-                    # 发送时间间隔为10秒
-                    if time_e - time_s > 10:
-                        print("请求双倍触发")
-                        data = build_data_decision(chances_flag, state)
-                        packet, seq = build_send_packet(data, seq, [0x03, 0x01])
-                        # print(packet.hex(),chances_flag,state)
-                        ser1.write(packet)
-                        print("请求成功", chances_flag)
-                        # 更新标志位
-                        chances_flag += 1
-                        if chances_flag >= 3:
-                            chances_flag = 1
+            # 有双倍易伤机会，并且当前没有在双倍易伤
+            if double_vulnerability_chance > 0 and opponent_double_vulnerability == 0:
+                time_e = time.time()
+                # 发送时间间隔为10秒
+                if time_e - time_s > 10:
+                    print("请求双倍触发")
+                    data = build_data_decision(chances_flag, state)
+                    packet, seq = build_send_packet(data, seq, [0x03, 0x01])
+                    # print(packet.hex(),chances_flag,state)
+                    ser1.write(packet)
+                    print("请求成功", chances_flag)
+                    # 更新标志位
+                    chances_flag += 1
+                    if chances_flag >= 3:
+                        chances_flag = 1
 
-                        time_s = time.time()
+                    time_s = time.time()
         except Exception as r:
             print('未知错误 %s' % (r))
 
