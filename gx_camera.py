@@ -23,8 +23,8 @@ def create_device(device_manager):
         return dev_info_list
 
 def open_device(cam):
-    Width_set = 640 # 设置分辨率宽
-    Height_set = 480 # 设置分辨率高
+    Width_set = 2048 # 设置分辨率宽
+    Height_set = 1536 # 设置分辨率高
 
     #如果是黑白相机
     if cam.PixelColorFilter.is_implemented() is False: # is_implemented判断枚举型属性参数是否已实现

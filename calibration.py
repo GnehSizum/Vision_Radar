@@ -20,7 +20,6 @@ def gx_camera_get():
 
     while True:
         numpy_image = get_image(cam)
-        # numpy_image = numpy_image.reshape((480, 640))
         camera_image = cv2.cvtColor(numpy_image, cv2.COLOR_RGB2BGR)
 
 
@@ -32,6 +31,18 @@ def video_capture_get():
         if ret:
             camera_image = img
             time.sleep(0.016)  # 60fps
+
+
+def video_test_get():
+    global camera_image
+    video = cv2.VideoCapture('/home/mumu/Videos/test1.avi')
+    while video.isOpened():
+        ret, frame = video.read()
+        if not ret: 
+            break
+        camera_image = frame
+        time.sleep(0.016)
+    video.release()
 
 
 color = [(255, 255, 255), (0, 255, 0), (0, 0, 255)]
@@ -259,18 +270,20 @@ class MyUI(QWidget):
 
 
 if __name__ == '__main__':
-    camera_mode = 'galaxy'  # 'test':测试模式,'galaxy':大恒相机,'video':USB相机（videocapture）
+    camera_mode = 'vtest'  # 'test':测试模式,'galaxy':大恒相机,'video':USB相机（videocapture）
     camera_image = None
-    state = 'B'  # R:红方/B:蓝方
+    state = 'R'  # R:红方/B:蓝方
 
     if camera_mode == 'test':
         camera_image = cv2.imread('images/test_image.jpg')
     elif camera_mode == 'video':
-        # USB相机图像获取线程
         thread_camera = threading.Thread(target=video_capture_get, daemon=True)
         thread_camera.start()
     elif camera_mode == 'galaxy':
         thread_camera = threading.Thread(target=gx_camera_get, daemon=True)
+        thread_camera.start()
+    elif camera_mode == 'vtest':
+        thread_camera = threading.Thread(target=video_test_get, daemon=True)
         thread_camera.start()
 
     while camera_image is None:
