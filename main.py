@@ -15,7 +15,6 @@ from RM_serial_py.ser_api import build_data_radar, build_send_packet, receive_pa
     build_data_decision
 
 
-
 state = 'R'  # R:红方/B:蓝方
 
 if state == 'R':
@@ -193,7 +192,6 @@ def gx_camera_get():
 
     while True:
         numpy_image = get_image(cam)
-        # numpy_image = numpy_image.reshape((480, 640))
         camera_image = cv2.cvtColor(numpy_image, cv2.COLOR_RGB2BGR)
 
 
@@ -619,9 +617,9 @@ detector_next = YOLOv5Detector(weights_path_next, data='yaml/armor.yaml', conf_t
                                max_det=1,
                                ui=True)
 
-ser1 = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)  # 串口，替换 'COM1' 为你的串口号
+ser1 = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)  # 串口
 # 图像测试模式（获取图像根据自己的设备，在）
-camera_mode = 'hik'  # 'test':测试模式,'hik':海康相机,'video':USB相机（videocapture）
+camera_mode = 'test'  # 'test':图片测试, 'video':视频测试, 'hik':海康相机, 'galaxy':大恒相机, 'usb':USB相机
 
 
 # 串口接收线程
@@ -769,13 +767,13 @@ while True:
     t_p = te - ts
     print("fps:",1 / t_p)  # 打印帧率
     # 绘制UI
-    _ = draw_information_ui(progress_list, state, information_ui_show)
-    cv2.putText(information_ui_show, "vulnerability_chances: " + str(double_vulnerability_chance),
-                (10, 350),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-    cv2.putText(information_ui_show, "vulnerability_Triggering: " + str(opponent_double_vulnerability),
-                (10, 400),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+    # _ = draw_information_ui(progress_list, state, information_ui_show)
+    # cv2.putText(information_ui_show, "vulnerability_chances: " + str(double_vulnerability_chance),
+    #             (10, 350),
+    #             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+    # cv2.putText(information_ui_show, "vulnerability_Triggering: " + str(opponent_double_vulnerability),
+    #             (10, 400),
+    #             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
     # cv2.imshow('information_ui', information_ui_show)
     map_show = cv2.resize(map, (1200, 640))
     cv2.imshow('map', map_show)
