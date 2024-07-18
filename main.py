@@ -358,42 +358,48 @@ def ser_send():
         'R7': 0,
     }
 
-    # 发送蓝方机器人坐标
-    def send_point_B(send_name, seq_s, all_filter_data):
-        front_time = time.time()
+    def return_xy_B(send_name):
         # 转换为地图坐标系
         filtered_xyz = (2800 - all_filter_data[send_name][1], all_filter_data[send_name][0])
-        # 转换为裁判系统单位M
-        ser_x = int(filtered_xyz[0]) * 10 / 1000
-        ser_y = int(1500 - filtered_xyz[1]) * 10 / 1000
-        # 打包坐标数据包
-        data = build_data_radar(mapping_table.get(send_name), ser_x, ser_y)
-        packet, seq_s = build_send_packet(data, seq_s, [0x03, 0x05])
-        ser1.write(packet)
-        back_time = time.time()
-        # 计算发送延时，动态调整
-        waste_time = back_time - front_time
-        # print("发送：",send_name, seq_s)
-        time.sleep(0.1 - waste_time)
-        return seq_s
-
-    # 发送红发机器人坐标
-    def send_point_R(send_name, seq_s, all_filter_data):
-        front_time = time.time()
+        # 转换为裁判系统单位 cm
+        ser_x = int(filtered_xyz[0])
+        ser_y = int(1500 - filtered_xyz[1])
+        return [ser_x, ser_y]
+    
+    def return_xy_R(send_name):
         # 转换为地图坐标系
         filtered_xyz = (all_filter_data[send_name][1], 1500 - all_filter_data[send_name][0])
         # 转换为裁判系统单位M
-        ser_x = int(filtered_xyz[0]) * 10 / 1000
-        ser_y = int(1500 - filtered_xyz[1]) * 10 / 1000
+        ser_x = int(filtered_xyz[0])
+        ser_y = int(1500 - filtered_xyz[1])
+        return [ser_x, ser_y]
+
+    # 发送蓝方机器人坐标
+    def send_point_B(target_position, seq_s):
+        front_time = time.time()
         # 打包坐标数据包
-        data = build_data_radar(mapping_table.get(send_name), ser_x, ser_y)
+        data = build_data_radar(target_position)
         packet, seq_s = build_send_packet(data, seq_s, [0x03, 0x05])
         ser1.write(packet)
         back_time = time.time()
         # 计算发送延时，动态调整
         waste_time = back_time - front_time
-        # print('发送：',send_name, seq_s)
-        time.sleep(0.1 - waste_time)
+        print("发送：", seq_s)
+        time.sleep(0.2 - waste_time)
+        return seq_s
+
+    # 发送红发机器人坐标
+    def send_point_R(target_position, seq_s):
+        front_time = time.time()
+        # 打包坐标数据包
+        data = build_data_radar(target_position)
+        packet, seq_s = build_send_packet(data, seq_s, [0x03, 0x05])
+        ser1.write(packet)
+        back_time = time.time()
+        # 计算发送延时，动态调整
+        waste_time = back_time - front_time
+        print('发送：', seq_s)
+        time.sleep(0.2 - waste_time)
         return seq_s
 
     # 发送盲区预测点坐标
@@ -429,86 +435,85 @@ def ser_send():
         send_count = 0  # 重置信道占用数
         try:
             all_filter_data = filter.get_all_data()
+            target_position = [[0,0], [0,0], [0,0], [0,0], [0,0], [0,0]]
             if state == 'R':
-                # 英雄优先发送
+                # 英雄
                 if not guess_list.get('B1') and all_filter_data.get('B1', False):
-                    seq = send_point_B('B1', seq, all_filter_data)
-                    send_count += 1
-                # 哨兵优先发送
-                if guess_list.get('B7'):
-                    seq = send_point_guess('B7', seq, guess_time_limit)
-                    send_count += 1
-                # 未识别到哨兵，进行盲区预测
-                else:
-                    if all_filter_data.get('B7', False):
-                        seq = send_point_B('B7', seq, all_filter_data)
-                        send_count += 1
+                    target_position[0] = return_xy_B('B1')
+                # 工程
+                if not guess_list.get('B2') and all_filter_data.get('B2', False):
+                    target_position[1] = return_xy_B('B2')
                 # 步兵3号
                 if not guess_list.get('B3'):
                     if all_filter_data.get('B3', False):
-                        seq = send_point_B('B3', seq, all_filter_data)
-                        send_count += 1
+                        target_position[2] = return_xy_B('B3')
                 # 步兵4号
                 if not guess_list.get('B4'):
                     if all_filter_data.get('B4', False):
-                        seq = send_point_B('B4', seq, all_filter_data)
-                        send_count += 1
+                        target_position[3] = return_xy_B('B4')
                 # 步兵5号
                 if not guess_list.get('B5'):
                     if all_filter_data.get('B5', False):
-                        seq = send_point_B('B5', seq, all_filter_data)
-                        send_count += 1
-                # 如果信道未满，发送工程
-                if send_count < 4:
-                    if not guess_list.get('B2') and all_filter_data.get('B2', False):
-                        seq = send_point_B('B2', seq, all_filter_data)
-                        send_count += 1
+                        target_position[4] = return_xy_B('B5')
+                # 哨兵
+                if not guess_list.get('B7'):
+                    if all_filter_data.get('B7', False):
+                        target_position[5] = return_xy_B('B7')
+                # if guess_list.get('B7'):
+                #     target_position[5] = return_xy_B('B7')
+                #     send_count += 1
+                # 未识别到哨兵，进行盲区预测
+                # else:
+                #     if all_filter_data.get('B7', False):
+                #         seq = send_point_B('B7', seq, all_filter_data)
+                #         send_count += 1
+                seq = send_point_B(target_position, seq)
 
             if state == 'B':
-                # 英雄优先发送
+                # 英雄
                 if not guess_list.get('R1') and all_filter_data.get('R1', False):
-                    seq = send_point_R('R1', seq, all_filter_data)
-                    send_count += 1
-                # 哨兵优先发送
-                if guess_list.get('R7'):
-                    seq = send_point_guess('R7', seq, guess_time_limit)
-                    send_count += 1
-                # 未识别到哨兵，进行盲区预测
-                else:
-                    if all_filter_data.get('R7', False):
-                        seq = send_point_R('R7', seq, all_filter_data)
-                        send_count += 1
+                    target_position[0] = return_xy_R('R1')
+                # 工程
+                if not guess_list.get('R2') and all_filter_data.get('R2', False):
+                    target_position[1] = return_xy_R('R2')
                 # 步兵3号
                 if not guess_list.get('R3'):
                     if all_filter_data.get('R3', False):
-                        seq = send_point_R('R3', seq, all_filter_data)
-                        send_count += 1
+                        target_position[2] = return_xy_R('R3')
                 # 步兵4号
                 if not guess_list.get('R4'):
                     if all_filter_data.get('R4', False):
-                        seq = send_point_R('R4', seq, all_filter_data)
-                        send_count += 1
+                        target_position[3] = return_xy_R('R4')
                 # 步兵5号
                 if not guess_list.get('R5'):
                     if all_filter_data.get('R5', False):
-                        seq = send_point_R('R5', seq, all_filter_data)
-                        send_count += 1
-                # 如果信道未满，发送工程
-                if send_count < 4:
-                    if not guess_list.get('R2') and all_filter_data.get('R2', False):
-                        seq = send_point_R('R2', seq, all_filter_data)
-                        send_count += 1
+                        target_position[4] = return_xy_R('R5')
+                # 哨兵
+                if not guess_list.get('R7'):
+                    if all_filter_data.get('R7', False):
+                        target_position[5] = return_xy_R('R7')
+                # if guess_list.get('R7'):
+                #     target_position[5] = return_xy_R('R7')
+                #     send_count += 1
+                # 未识别到哨兵，进行盲区预测
+                # else:
+                #     if all_filter_data.get('R7', False):
+                #         seq = send_point_R('R7', seq, all_filter_data)
+                #         send_count += 1
+                seq = send_point_R(target_position, seq)
+            
+            
             # 超过单点预测时间上限，更新上次预测的进度
-            if time.time() - update_time > guess_time_limit:
-                update_time = time.time()
-                if state == 'R':
-                    guess_value['B1'] = guess_value_now.get('B1')
-                    guess_value['B2'] = guess_value_now.get('B2')
-                    guess_value['B7'] = guess_value_now.get('B7')
-                else:
-                    guess_value['R1'] = guess_value_now.get('R1')
-                    guess_value['R2'] = guess_value_now.get('R2')
-                    guess_value['R7'] = guess_value_now.get('R7')
+            # if time.time() - update_time > guess_time_limit:
+            #     update_time = time.time()
+            #     if state == 'R':
+            #         guess_value['B1'] = guess_value_now.get('B1')
+            #         guess_value['B2'] = guess_value_now.get('B2')
+            #         guess_value['B7'] = guess_value_now.get('B7')
+            #     else:
+            #         guess_value['R1'] = guess_value_now.get('R1')
+            #         guess_value['R2'] = guess_value_now.get('R2')
+            #         guess_value['R7'] = guess_value_now.get('R7')
 
             # 有双倍易伤机会，并且当前没有在双倍易伤
             if double_vulnerability_chance > 0 and opponent_double_vulnerability == 0:
@@ -664,9 +669,13 @@ while True:
     det_time = 0
     img0 = camera_image.copy()
     ts = time.time()
+    start = time.perf_counter()
     # 第一层神经网络识别
     result0 = detector.predict(img0)
     det_time += 1
+    end = time.perf_counter()
+    diff = end - start
+    print("Time Diff: ", diff, "s")
     for detection in result0:
         cls, xywh, conf = detection
         if cls == 'car':

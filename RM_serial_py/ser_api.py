@@ -77,11 +77,20 @@ def Get_CRC16_Check_Sum(pchMessage, dwLength):
 
 
 # 雷达数据部分构建示例
-def build_data_radar(target_robot_id, target_position_x, target_position_y):
+def build_data_radar(target_position):
     data = bytearray()
-    data.extend(bytearray(struct.pack('H', target_robot_id)))  # 目标机器人ID (小端)
-    data.extend(bytearray(struct.pack('f', target_position_x)))  # x坐标 (小端)
-    data.extend(bytearray(struct.pack('f', target_position_y)))  # y坐标 (小端)
+    data.extend(bytearray(struct.pack('H', target_position[0][0])))
+    data.extend(bytearray(struct.pack('H', target_position[0][1])))
+    data.extend(bytearray(struct.pack('H', target_position[1][0])))
+    data.extend(bytearray(struct.pack('H', target_position[1][1])))
+    data.extend(bytearray(struct.pack('H', target_position[2][0])))
+    data.extend(bytearray(struct.pack('H', target_position[2][1])))
+    data.extend(bytearray(struct.pack('H', target_position[3][0])))
+    data.extend(bytearray(struct.pack('H', target_position[3][1])))
+    data.extend(bytearray(struct.pack('H', target_position[4][0])))
+    data.extend(bytearray(struct.pack('H', target_position[4][1])))
+    data.extend(bytearray(struct.pack('H', target_position[5][0])))
+    data.extend(bytearray(struct.pack('H', target_position[5][1])))
     return data
 
 
