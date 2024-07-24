@@ -21,10 +21,12 @@ if state == 'R':
     loaded_arrays = np.load('arrays_test_red.npy')  # 加载标定好的仿射变换矩阵
     map_image = cv2.imread("images/map_red.jpg")  # 加载红方视角地图
     mask_image = cv2.imread("images/map_mask.jpg")  # 加载红发落点判断掩码
+    hide_mask = cv2.imread('images/hide_mask.jpg')
 else:
     loaded_arrays = np.load('arrays_test_blue.npy')  # 加载标定好的仿射变换矩阵
     map_image = cv2.imread("images/map_blue.jpg")  # 加载蓝方视角地图
     mask_image = cv2.imread("images/map_mask.jpg")  # 加载蓝方落点判断掩码
+    hide_mask = cv2.imread('images/hide_mask.jpg')
 
 # 导入战场每个高度的不同仿射变化矩阵
 M_height_r = loaded_arrays[1]  # R型高地
@@ -49,39 +51,35 @@ progress_list = [-1, -1, -1, -1, -1, -1]  # 标记进度列表
 map_backup = cv2.imread("images/map.jpg")
 map = map_backup.copy()
 
-# 初始化盲区预测列表
-guess_list = {
-    "B1": True,
-    "B2": True,
-    "B3": True,
-    "B4": True,
-    "B5": True,
-    "B6": True,
-    "B7": True,
-    "R1": True,
-    "R2": True,
-    "R3": True,
-    "R4": True,
-    "R5": True,
-    "R6": True,
-    "R7": True
-}
-# 上次盲区预测时的标记进度
+# 盲区预测次数
 guess_value = {
     "B1": 0,
     "B2": 0,
+    "B3": 0,
+    "B4": 0,
+    "B5": 0,
     "B7": 0,
     "R1": 0,
     "R2": 0,
+    "R3": 0,
+    "R4": 0,
+    "R5": 0,
     "R7": 0
 }
+
 # 当前标记进度（用于判断是否预测正确正确）
-guess_value_now = {
+mark_progress = {
     "B1": 0,
     "B2": 0,
+    "B3": 0,
+    "B4": 0,
+    "B5": 0,
     "B7": 0,
     "R1": 0,
     "R2": 0,
+    "R3": 0,
+    "R4": 0,
+    "R5": 0,
     "R7": 0
 }
 
@@ -103,16 +101,35 @@ mapping_table = {
     "B7": 107
 }
 
-# 盲区预测点位，如果没有定位模块，连接数服务器的非哨兵机器人坐标为（0,0）
-guess_table = {
-    "R1": [(11.0, 14.0), (9.0, 14.0)],
-    "R2": [(8.7, 11.0), (13.4, 6.8)],
-    "R7": [(5.6, 6.3), (5.6, 8.7)],
-    "B1": [(17.0, 1.0), (19.0, 1.0)],
-    # "B1": [(0, 0), (19.0, 1.0)],
-    "B2": [(19.3, 4.0), (14.6, 8.2)],
-    "B7": [(22.4, 8.7), (22.4, 6.3)],
-    # "B7": [(0, 0), (22.4, 6.3)]
+
+# 预测点索引
+guess_index = {
+    'B1': 0,
+    'B2': 0,
+    'B3': 0,
+    'B4': 0,
+    'B5': 0,
+    'B7': 0,
+    'R1': 0,
+    'R2': 0,
+    'R3': 0,
+    'R4': 0,
+    'R5': 0,
+    'R7': 0,
+}
+
+guess_table_B = {
+    "G0": [(5.6, 6.5), (5.6, 8.5)],
+    "G1": [(1.6, 3.7), (1.6, 1.7)],
+    "G2": [(8.0, 6.5), (8.0, 8.5)],
+    "G3": [(8.7, 12.3), (7.35, 10.35)]
+}
+
+guess_table_R = {
+    "G0": [(22.4, 8.5), (22.4, 6.5)],
+    "G1": [(26.4, 11.3), (26.4, 11.3)],
+    "G2": [(20.0, 8.5), (20.0, 6.5)],
+    "G3": [(19.3, 2.7), (20.65, 4.65)]
 }
 
 
@@ -339,24 +356,6 @@ def ser_send():
     seq = 0
     global chances_flag
     global guess_value
-    # 单点预测时间
-    guess_time = {
-        'B1': 0,
-        'B2': 0,
-        'B7': 0,
-        'R1': 0,
-        'R2': 0,
-        'R7': 0,
-    }
-    # 预测点索引
-    guess_index = {
-        'B1': 0,
-        'B2': 0,
-        'B7': 0,
-        'R1': 0,
-        'R2': 0,
-        'R7': 0,
-    }
 
     def return_xy_B(send_name):
         # 转换为地图坐标系
@@ -374,8 +373,8 @@ def ser_send():
         ser_y = int(1500 - filtered_xyz[1])
         return [ser_x, ser_y]
 
-    # 发送蓝方机器人坐标
-    def send_point_B(target_position, seq_s):
+    # 发送机器人坐标
+    def send_point(target_position, seq_s):
         front_time = time.time()
         # 打包坐标数据包
         data = build_data_radar(target_position)
@@ -387,133 +386,133 @@ def ser_send():
         print("发送：", seq_s)
         time.sleep(0.2 - waste_time)
         return seq_s
+    
+    def get_guess_point(send_name):
+        guess_point = [0,0]
+        if send_name == "R7" or send_name == "B7":
+            if guess_value[send_name] == 0:
+                guess_point = guess_table_B["G0"][0]
+                guess_value[send_name] = 1
+            else:
+                guess_point = guess_table_B["G0"][1]
+                guess_value[send_name] = 0
+        else:
+            if guess_index[send_name] == 1:
+                if send_name == "R2":
+                    guess_point = guess_table_B["G1"][0]
+                else:
+                    guess_point = guess_table_B["G1"][1]
+            if guess_index[send_name] == 2:
+                value = guess_value[send_name] % 2
+                guess_point = guess_table_B["G2"][value]
+                guess_value[send_name] = guess_value[send_name]+1
+                if guess_value[send_name] == 5:
+                    guess_value[send_name] = -1
+            if guess_index[send_name] == 3:
+                value = guess_value[send_name] % 2
+                guess_point = guess_table_B["G3"][value]
+                guess_value[send_name] = guess_value[send_name]+1
+                if guess_value[send_name] == 5:
+                    guess_value[send_name] = -1
+        return guess_point
 
-    # 发送红发机器人坐标
-    def send_point_R(target_position, seq_s):
-        front_time = time.time()
-        # 打包坐标数据包
-        data = build_data_radar(target_position)
-        packet, seq_s = build_send_packet(data, seq_s, [0x03, 0x05])
-        ser1.write(packet)
-        back_time = time.time()
-        # 计算发送延时，动态调整
-        waste_time = back_time - front_time
-        print('发送：', seq_s)
-        time.sleep(0.2 - waste_time)
-        return seq_s
-
-    # 发送盲区预测点坐标
-    def send_point_guess(send_name, seq_s, guess_time_limit):
-        front_time = time.time()
-        # print(guess_value_now.get(send_name),guess_value.get(send_name) ,guess_index[send_name])
-        # 进度未满 and 预测进度没有涨 and 超过单点预测时间上限，同时满足则切换另一个点预测
-        if guess_value_now.get(send_name) < 120 and guess_value_now.get(send_name) - guess_value.get(
-                send_name) <= 0 and time.time() - guess_time.get(send_name) >= guess_time_limit:
-            guess_index[send_name] = 1 - guess_index[send_name]  # 每个ID不一样
-            guess_time[send_name] = time.time()
-        if guess_value_now.get(send_name) - guess_value.get(send_name) > 0:
-            guess_time[send_name] = time.time()
-        # 打包坐标数据包
-        data = build_data_radar(mapping_table.get(send_name), guess_table.get(send_name)[guess_index.get(send_name)][0],
-                                guess_table.get(send_name)[guess_index.get(send_name)][1])
-        packet, seq_s = build_send_packet(data, seq_s, [0x03, 0x05])
-        ser1.write(packet)
-        back_time = time.time()
-        # 计算发送延时，动态调整
-        waste_time = back_time - front_time
-        # print('发送：',send_name, seq_s)
-        time.sleep(0.1 - waste_time)
-        return seq_s
 
     time_s = time.time()
     target_last = 0  # 上一帧的飞镖目标
-    update_time = 0  # 上次预测点更新时间
-    send_count = 0  # 信道占用数，上限为4
     while True:
-        guess_time_limit = send_count + 1.7  # 根据上一帧的信道占用数动态调整单点预测时间
-        # print(guess_time_limit)
-        send_count = 0  # 重置信道占用数
         try:
             all_filter_data = filter.get_all_data()
             target_position = [[0,0], [0,0], [0,0], [0,0], [0,0], [0,0]]
             if state == 'R':
                 # 英雄
-                if not guess_list.get('B1') and all_filter_data.get('B1', False):
+                if all_filter_data.get('B1', False):
                     target_position[0] = return_xy_B('B1')
+                    guess_index["B1"] = 0
+                    guess_value["B1"] = 0
+                else:
+                    target_position[0] = get_guess_point("B1")
                 # 工程
-                if not guess_list.get('B2') and all_filter_data.get('B2', False):
+                if all_filter_data.get('B2', False):
                     target_position[1] = return_xy_B('B2')
+                    guess_index["B2"] = 0
+                    guess_value["B2"] = 0
+                else:
+                    target_position[1] = get_guess_point("B2")
                 # 步兵3号
-                if not guess_list.get('B3'):
-                    if all_filter_data.get('B3', False):
-                        target_position[2] = return_xy_B('B3')
+                if all_filter_data.get('B3', False):
+                    target_position[2] = return_xy_B('B3')
+                    guess_index["B3"] = 0
+                    guess_value["B3"] = 0
+                else:
+                    target_position[2] = get_guess_point("B3")
                 # 步兵4号
-                if not guess_list.get('B4'):
-                    if all_filter_data.get('B4', False):
-                        target_position[3] = return_xy_B('B4')
+                if all_filter_data.get('B4', False):
+                    target_position[3] = return_xy_B('B4')
+                    guess_index["B4"] = 0
+                    guess_value["B4"] = 0
+                else:
+                    target_position[3] = get_guess_point("B4")
                 # 步兵5号
-                if not guess_list.get('B5'):
-                    if all_filter_data.get('B5', False):
-                        target_position[4] = return_xy_B('B5')
+                if all_filter_data.get('B5', False):
+                    target_position[4] = return_xy_B('B5')
+                    guess_index["B5"] = 0
+                    guess_value["B5"] = 0
+                else:
+                    target_position[4] = get_guess_point("B5")
                 # 哨兵
-                if not guess_list.get('B7'):
-                    if all_filter_data.get('B7', False):
-                        target_position[5] = return_xy_B('B7')
-                # if guess_list.get('B7'):
-                #     target_position[5] = return_xy_B('B7')
-                #     send_count += 1
-                # 未识别到哨兵，进行盲区预测
-                # else:
-                #     if all_filter_data.get('B7', False):
-                #         seq = send_point_B('B7', seq, all_filter_data)
-                #         send_count += 1
-                seq = send_point_B(target_position, seq)
+                if all_filter_data.get('B7', False):
+                    target_position[5] = return_xy_B('B7')
+                    guess_index["B7"] = 0
+                    guess_value["B7"] = 0
+                else:
+                    target_position[5] = get_guess_point("B7")
+                seq = send_point(target_position, seq)
 
             if state == 'B':
                 # 英雄
-                if not guess_list.get('R1') and all_filter_data.get('R1', False):
+                if all_filter_data.get('R1', False):
                     target_position[0] = return_xy_R('R1')
+                    guess_index["R1"] = 0
+                    guess_value["R1"] = 0
+                else:
+                    target_position[0] = get_guess_point("R1")
                 # 工程
-                if not guess_list.get('R2') and all_filter_data.get('R2', False):
+                if all_filter_data.get('R2', False):
                     target_position[1] = return_xy_R('R2')
+                    guess_index["R2"] = 0
+                    guess_value["R2"] = 0
+                else:
+                    target_position[1] = get_guess_point("R2")
                 # 步兵3号
-                if not guess_list.get('R3'):
-                    if all_filter_data.get('R3', False):
-                        target_position[2] = return_xy_R('R3')
+                if all_filter_data.get('R3', False):
+                    target_position[2] = return_xy_R('R3')
+                    guess_index["R3"] = 0
+                    guess_value["R3"] = 0
+                else:
+                    target_position[2] = get_guess_point("R3")
                 # 步兵4号
-                if not guess_list.get('R4'):
-                    if all_filter_data.get('R4', False):
-                        target_position[3] = return_xy_R('R4')
+                if all_filter_data.get('R4', False):
+                    target_position[3] = return_xy_R('R4')
+                    guess_index["R4"] = 0
+                    guess_value["R4"] = 0
+                else:
+                    target_position[3] = get_guess_point("R4")
                 # 步兵5号
-                if not guess_list.get('R5'):
-                    if all_filter_data.get('R5', False):
-                        target_position[4] = return_xy_R('R5')
+                if all_filter_data.get('R5', False):
+                    target_position[4] = return_xy_R('R5')
+                    guess_index["R5"] = 0
+                    guess_value["R5"] = 0
+                else:
+                    target_position[4] = get_guess_point("R5")
                 # 哨兵
-                if not guess_list.get('R7'):
-                    if all_filter_data.get('R7', False):
-                        target_position[5] = return_xy_R('R7')
-                # if guess_list.get('R7'):
-                #     target_position[5] = return_xy_R('R7')
-                #     send_count += 1
-                # 未识别到哨兵，进行盲区预测
-                # else:
-                #     if all_filter_data.get('R7', False):
-                #         seq = send_point_R('R7', seq, all_filter_data)
-                #         send_count += 1
-                seq = send_point_R(target_position, seq)
+                if all_filter_data.get('R7', False):
+                    target_position[5] = return_xy_R('R7')
+                    guess_index["R7"] = 0
+                    guess_value["R7"] = 0
+                else:
+                    target_position[5] = get_guess_point("R7")
+                seq = send_point(target_position, seq)
             
-            
-            # 超过单点预测时间上限，更新上次预测的进度
-            # if time.time() - update_time > guess_time_limit:
-            #     update_time = time.time()
-            #     if state == 'R':
-            #         guess_value['B1'] = guess_value_now.get('B1')
-            #         guess_value['B2'] = guess_value_now.get('B2')
-            #         guess_value['B7'] = guess_value_now.get('B7')
-            #     else:
-            #         guess_value['R1'] = guess_value_now.get('R1')
-            #         guess_value['R2'] = guess_value_now.get('R2')
-            #         guess_value['R7'] = guess_value_now.get('R7')
 
             # 有双倍易伤机会，并且当前没有在双倍易伤
             if double_vulnerability_chance > 0 and opponent_double_vulnerability == 0:
@@ -582,13 +581,19 @@ def ser_receive():
                     received_cmd_id1, received_data1, received_seq1 = progress_result
                     progress_list = list(received_data1)
                     if state == 'R':
-                        guess_value_now['B1'] = progress_list[0]
-                        guess_value_now['B2'] = progress_list[1]
-                        guess_value_now['B7'] = progress_list[5]
+                        mark_progress['B1'] = progress_list[0]
+                        mark_progress['B2'] = progress_list[1]
+                        mark_progress['B3'] = progress_list[2]
+                        mark_progress['B4'] = progress_list[3]
+                        mark_progress['B5'] = progress_list[4]
+                        mark_progress['B7'] = progress_list[5]
                     else:
-                        guess_value_now['R1'] = progress_list[0]
-                        guess_value_now['R2'] = progress_list[1]
-                        guess_value_now['R7'] = progress_list[5]
+                        mark_progress['R1'] = progress_list[0]
+                        mark_progress['R2'] = progress_list[1]
+                        mark_progress['R3'] = progress_list[2]
+                        mark_progress['R4'] = progress_list[3]
+                        mark_progress['R5'] = progress_list[4]
+                        mark_progress['R7'] = progress_list[5]
                 if vulnerability_result is not None:
                     received_cmd_id2, received_data2, received_seq2 = vulnerability_result
                     received_data2 = list(received_data2)[0]
@@ -712,6 +717,7 @@ while True:
                         x_c = min(x_c, width)
                         y_c = min(y_c, height)
                         color = mask_image[y_c, x_c]  # 通过掩码图像，获取地面层的颜色：黑（0，0，0）
+
                         if color[0] == color[1] == color[2] == 0:
                             X_M = x_c
                             Y_M = y_c
@@ -745,6 +751,17 @@ while True:
                                     Y_M = y_c
                                     # Z_M = 600
                                     filter.add_data(cls, X_M, Y_M)
+                        
+                        hide = hide_mask[y_c, x_c]
+                        if hide[0] > hide[1] and hide[0] > hide[2]:
+                            guess_index[cls] = 1
+                        if hide[1] > hide[2] and hide[1] > hide[0]:
+                            guess_index[cls] = 2
+                        if hide[2] > hide[1] and hide[2] > hide[0]:
+                            guess_index[cls] = 3
+                        else:
+                            guess_index[cls] = 0
+
 
     # 获取所有识别到的机器人坐标
     all_filter_data = filter.get_all_data()
