@@ -91,6 +91,13 @@ def build_data_radar(target_position):
     data.extend(bytearray(struct.pack('H', target_position[4][1])))
     data.extend(bytearray(struct.pack('H', target_position[5][0])))
     data.extend(bytearray(struct.pack('H', target_position[5][1])))
+    print("========== Serial Send ==========")
+    print("R1: (", int(target_position[0][0]), ", ", int(target_position[0][1]), ")")
+    print("R2: (", int(target_position[1][0]), ", ", int(target_position[1][1]), ")")
+    print("R3: (", int(target_position[2][0]), ", ", int(target_position[2][1]), ")")
+    print("R4: (", int(target_position[3][0]), ", ", int(target_position[3][1]), ")")
+    print("R5: (", int(target_position[4][0]), ", ", int(target_position[4][1]), ")")
+    print("R7: (", int(target_position[5][0]), ", ", int(target_position[5][1]), ")")
     return data
 
 

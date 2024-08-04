@@ -181,8 +181,15 @@ class MyUI(QWidget):
         self.left_top_label.mousePressEvent = self.left_top_clicked
         self.image_points = [[(0, 0), (0, 0), (0, 0), (0, 0)], [(0, 0), (0, 0), (0, 0), (0, 0)],
                              [(0, 0), (0, 0), (0, 0), (0, 0)], [(0, 0), (0, 0), (0, 0), (0, 0)]]
-        self.map_points = [[(0, 0), (0, 0), (0, 0), (0, 0)], [(0, 0), (0, 0), (0, 0), (0, 0)],
-                           [(0, 0), (0, 0), (0, 0), (0, 0)], [(0, 0), (0, 0), (0, 0), (0, 0)]]
+        
+        # 8mm
+        self.map_points = [[(500, 2130), (1185, 1630), (330, 1070), (500, 450)], [(365, 2265), (415, 505), (1268, 346), (1397, 505)],
+                           [(392, 1670), (774, 1780), (1195, 1088), (690, 899)], [(0, 0), (0, 0), (0, 0), (0, 0)]]
+        
+        # 12mm
+        # self.map_points = [[(500, 2130), (1145, 1345), (325, 1075), (495, 455)], [(310, 774), (415, 505), (1265, 350), (1395, 505)],
+        #                    [(417, 1640), (775, 1775), (1195, 1085), (690, 899)], [(0, 0), (0, 0), (0, 0), (0, 0)]]
+        
         self.image_count = 0
         self.map_count = 0
         # 右上角部分
@@ -317,11 +324,12 @@ class MyUI(QWidget):
         if not self.capturing:
             x = int(event.pos().x() * self.right_scale_x)
             y = int(event.pos().y() * self.right_scale_y)
+
             self.map_points[self.height][self.map_count % 4] = (x, y)
 
             cv2.circle(self.right_image, (int(x / self.right_scale_x), int(y / self.right_scale_y)), 4,
-                       color[self.height],
-                       -1)
+                    color[self.height],
+                    -1)
             cv2.putText(self.right_image, str(self.map_count % 4),
                         (int(x / self.right_scale_x), int(y / self.right_scale_y)), cv2.FONT_HERSHEY_SIMPLEX, 1,
                         color[self.height], 2)
@@ -389,10 +397,11 @@ class MyUI(QWidget):
 if __name__ == '__main__':
     camera_mode = 'test'  # 'test':图片测试, 'video':视频测试, 'hik':海康相机, 'galaxy':大恒相机, 'usb':USB相机
     camera_image = None
-    state = 'B'  # R:红方/B:蓝方
+    state = 'R'  # R:红方/B:蓝方
 
     if camera_mode == 'test':
-        camera_image = cv2.imread('images/test_image.jpg')
+        # camera_image = cv2.imread('images/test_image.jpg')
+        camera_image = cv2.imread('images/233.png')
     elif camera_mode == 'video':
         thread_camera = threading.Thread(target=video_test_get, daemon=True)
         thread_camera.start()

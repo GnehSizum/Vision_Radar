@@ -1,5 +1,6 @@
 import threading
 import time
+import math
 from collections import deque
 import serial
 from information_ui import draw_information_ui
@@ -119,17 +120,17 @@ guess_index = {
 }
 
 guess_table_B = {
-    "G0": [(5.6, 6.5), (5.6, 8.5)],
-    "G1": [(1.6, 3.7), (1.6, 1.7)],
-    "G2": [(8.0, 6.5), (8.0, 8.5)],
-    "G3": [(8.7, 12.3), (7.35, 10.35)]
+    "G0": [(560, 650), (560, 850)],
+    "G1": [(160, 370), (160, 170)],
+    "G2": [(800, 650), (800, 850)],
+    "G3": [(870, 1230), (735, 1035)]
 }
 
 guess_table_R = {
-    "G0": [(22.4, 8.5), (22.4, 6.5)],
-    "G1": [(26.4, 11.3), (26.4, 11.3)],
-    "G2": [(20.0, 8.5), (20.0, 6.5)],
-    "G3": [(19.3, 2.7), (20.65, 4.65)]
+    "G0": [(2240, 850), (2240, 650)],
+    "G1": [(2640, 1130), (2640, 1130)],
+    "G2": [(2000, 850), (2000, 650)],
+    "G3": [(1930, 270), (2065, 4650)]
 }
 
 
@@ -143,28 +144,45 @@ class Filter:
         self.last_update = {}  # 存储每个机器人的最后更新时间
 
     # 添加机器人坐标数据
-    def add_data(self, name, x, y, threshold=100000.0):  # 阈值单位为mm，实测没啥用，不如直接给大点
-        global guess_list
+    def add_data(self, name, x, y, conf, threshold=100000.0):  # 阈值单位为mm，实测没啥用，不如直接给大点
+        print('name: ', name)
+        name0 = name
+        flag = 0
+        if name.startswith('R'):
+            new_name = name.replace('R', 'B') 
+        if name.startswith('B'):
+            new_name = name.replace('B', 'R')
+        
         if name not in self.data:
             # 如果实体名称不在数据字典中，初始化相应的deque。
             self.data[name] = deque(maxlen=self.window_size)
             self.window[name] = deque(maxlen=self.window_size)
-
-        if len(self.window[name]) >= 2:
-            # 计算当前坐标与前一个坐标的均方
-            msd = sum((a - b) ** 2 for a, b in zip((x, y), self.window[name][-1])) / 2.0
-            # print(name, msd)
-
-            if msd > threshold:
-                # 如果均方差超过阈值，可能是异常值，不将其添加到数据中
-                return
+        if conf > 0.82:
+            if len(self.window[name]) >= 2:
+                # 计算当前坐标与前一个坐标的均方
+                msd = sum((a - b) ** 2 for a, b in zip((x, y), self.window[name][-1])) / 2.0
+                if msd > threshold:
+                    # 如果均方差超过阈值，可能是异常值，不将其添加到数据中
+                    return flag
+        else:
+            if new_name not in self.data:
+                # 如果实体名称不在数据字典中，初始化相应的deque。
+                self.data[new_name] = deque(maxlen=self.window_size)
+                self.window[new_name] = deque(maxlen=self.window_size)
+            if len(self.window[new_name]) >= 2:
+                dis0 = math.sqrt(sum((a - b) ** 2 for a, b in zip((x, y), self.window[new_name][-1])))
+                # print('dis0: ', dis0)
+                if dis0 < 80:
+                    self.data[name].clear()
+                    self.window[name].clear()
+                    name0 = new_name
+                    flag = 1
 
         # 将坐标数据添加到数据字典和滑动窗口中。
-        self.data[name].append((x, y))
-        guess_list[name] = False
-
-        self.window[name].append((x, y))
-        self.last_update[name] = time.time()  # 更新最后更新时间
+        self.data[name0].append((x, y))
+        self.window[name0].append((x, y))
+        self.last_update[name0] = time.time()  # 更新最后更新时间
+        return flag
 
     # 过滤计算滑动窗口平均值
     def filter_data(self, name):
@@ -184,15 +202,13 @@ class Filter:
     def get_all_data(self):
         filtered_d = {}
         for name in self.data:
-            # 超过max_inactive_time没识别到机器人将会清空缓冲区，并进行盲区预测
-            if time.time() - self.last_update[name] > self.max_inactive_time:
-                self.data[name].clear()
-                self.window[name].clear()
-                guess_list[name] = True
-            # 识别到机器人，不进行盲区预测
-            else:
-                guess_list[name] = False
-                filtered_d[name] = self.filter_data(name)
+            if name in self.last_update:
+                # 超过max_inactive_time没识别到机器人将会清空缓冲区
+                if time.time() - self.last_update[name] > self.max_inactive_time:
+                    self.data[name].clear()
+                    self.window[name].clear()
+                else:
+                    filtered_d[name] = self.filter_data(name)
         # 返回所有当前识别到的机器人及其坐标的均值
         return filtered_d
 
@@ -383,37 +399,64 @@ def ser_send():
         back_time = time.time()
         # 计算发送延时，动态调整
         waste_time = back_time - front_time
-        print("发送：", seq_s)
+        # print("发送：", seq_s)
         time.sleep(0.2 - waste_time)
         return seq_s
     
     def get_guess_point(send_name):
         guess_point = [0,0]
-        if send_name == "R7" or send_name == "B7":
-            if guess_value[send_name] == 0:
-                guess_point = guess_table_B["G0"][0]
-                guess_value[send_name] = 1
-            else:
-                guess_point = guess_table_B["G0"][1]
-                guess_value[send_name] = 0
-        else:
-            if guess_index[send_name] == 1:
-                if send_name == "R2":
-                    guess_point = guess_table_B["G1"][0]
+        if state == 'B':
+            if send_name == "R7":
+                if guess_value[send_name] == 0:
+                    guess_point = guess_table_B['G0'][0]
+                    guess_value[send_name] = 1
                 else:
-                    guess_point = guess_table_B["G1"][1]
-            if guess_index[send_name] == 2:
-                value = guess_value[send_name] % 2
-                guess_point = guess_table_B["G2"][value]
-                guess_value[send_name] = guess_value[send_name]+1
-                if guess_value[send_name] == 5:
-                    guess_value[send_name] = -1
-            if guess_index[send_name] == 3:
-                value = guess_value[send_name] % 2
-                guess_point = guess_table_B["G3"][value]
-                guess_value[send_name] = guess_value[send_name]+1
-                if guess_value[send_name] == 5:
-                    guess_value[send_name] = -1
+                    guess_point = guess_table_B['G0'][1]
+                    guess_value[send_name] = 0
+            else:
+                if guess_index[send_name] == 1:
+                    if send_name == "R2":
+                        guess_point = guess_table_B['G1'][0]
+                    else:
+                        guess_point = guess_table_B['G1'][1]
+                if guess_index[send_name] == 2:
+                    value = guess_value[send_name] % 2
+                    guess_point = guess_table_B['G2'][value]
+                    guess_value[send_name] = guess_value[send_name]+1
+                    if guess_value[send_name] == 5:
+                        guess_value[send_name] = -1
+                if guess_index[send_name] == 3:
+                    value = guess_value[send_name] % 2
+                    guess_point = guess_table_B['G3'][value]
+                    guess_value[send_name] = guess_value[send_name]+1
+                    if guess_value[send_name] == 5:
+                        guess_value[send_name] = -1
+        if state == 'R':
+            if send_name == "B7":
+                if guess_value[send_name] == 0:
+                    guess_point = guess_table_B['G0'][0]
+                    guess_value[send_name] = 1
+                else:
+                    guess_point = guess_table_B['G0'][1]
+                    guess_value[send_name] = 0
+            else:
+                if guess_index[send_name] == 1:
+                    if send_name == "B2":
+                        guess_point = guess_table_R['G1'][0]
+                    else:
+                        guess_point = guess_table_R['G1'][1]
+                if guess_index[send_name] == 2:
+                    value = guess_value[send_name] % 2
+                    guess_point = guess_table_B['G2'][value]
+                    guess_value[send_name] = guess_value[send_name]+1
+                    if guess_value[send_name] == 5:
+                        guess_value[send_name] = -1
+                if guess_index[send_name] == 3:
+                    value = guess_value[send_name] % 2
+                    guess_point = guess_table_B['G3'][value]
+                    guess_value[send_name] = guess_value[send_name]+1
+                    if guess_value[send_name] == 5:
+                        guess_value[send_name] = -1
         return guess_point
 
 
@@ -427,110 +470,122 @@ def ser_send():
                 # 英雄
                 if all_filter_data.get('B1', False):
                     target_position[0] = return_xy_B('B1')
-                    guess_index["B1"] = 0
-                    guess_value["B1"] = 0
+                    # guess_index['B1'] = 0
+                    guess_value['B1'] = 0
                 else:
-                    target_position[0] = get_guess_point("B1")
+                    if guess_value['B1'] > -1:
+                        target_position[0] = get_guess_point('B1')
                 # 工程
                 if all_filter_data.get('B2', False):
                     target_position[1] = return_xy_B('B2')
-                    guess_index["B2"] = 0
-                    guess_value["B2"] = 0
+                    # guess_index['B2'] = 0
+                    guess_value['B2'] = 0
                 else:
-                    target_position[1] = get_guess_point("B2")
+                    if guess_value['B2'] > -1:
+                        target_position[1] = get_guess_point('B2')
                 # 步兵3号
                 if all_filter_data.get('B3', False):
                     target_position[2] = return_xy_B('B3')
-                    guess_index["B3"] = 0
-                    guess_value["B3"] = 0
+                    # guess_index['B3'] = 0
+                    guess_value['B3'] = 0
                 else:
-                    target_position[2] = get_guess_point("B3")
+                    if guess_value['B3'] > -1:
+                        target_position[2] = get_guess_point('B3')
                 # 步兵4号
                 if all_filter_data.get('B4', False):
                     target_position[3] = return_xy_B('B4')
-                    guess_index["B4"] = 0
-                    guess_value["B4"] = 0
+                    # guess_index['B4'] = 0
+                    guess_value['B4'] = 0
                 else:
-                    target_position[3] = get_guess_point("B4")
+                    if guess_value['B4'] > -1:
+                        target_position[3] = get_guess_point('B4')
                 # 步兵5号
                 if all_filter_data.get('B5', False):
                     target_position[4] = return_xy_B('B5')
-                    guess_index["B5"] = 0
-                    guess_value["B5"] = 0
+                    # guess_index['B5'] = 0
+                    guess_value['B5'] = 0
                 else:
-                    target_position[4] = get_guess_point("B5")
+                    if guess_value['B5'] > -1:
+                        target_position[4] = get_guess_point('B5')
                 # 哨兵
                 if all_filter_data.get('B7', False):
                     target_position[5] = return_xy_B('B7')
-                    guess_index["B7"] = 0
-                    guess_value["B7"] = 0
+                    # guess_index['B7'] = 0
+                    guess_value['B7'] = 0
                 else:
-                    target_position[5] = get_guess_point("B7")
+                    target_position[5] = get_guess_point('B7')
                 seq = send_point(target_position, seq)
 
             if state == 'B':
                 # 英雄
                 if all_filter_data.get('R1', False):
                     target_position[0] = return_xy_R('R1')
-                    guess_index["R1"] = 0
-                    guess_value["R1"] = 0
+                    # guess_index['R1'] = 0
+                    guess_value['R1'] = 0
                 else:
-                    target_position[0] = get_guess_point("R1")
+                    if guess_value['R1'] > -1:
+                        target_position[0] = get_guess_point('R1')
                 # 工程
                 if all_filter_data.get('R2', False):
                     target_position[1] = return_xy_R('R2')
-                    guess_index["R2"] = 0
-                    guess_value["R2"] = 0
+                    # guess_index['R2'] = 0
+                    guess_value['R2'] = 0
                 else:
-                    target_position[1] = get_guess_point("R2")
+                    if guess_value['R2'] > -1:
+                        target_position[1] = get_guess_point('R2')
                 # 步兵3号
                 if all_filter_data.get('R3', False):
                     target_position[2] = return_xy_R('R3')
-                    guess_index["R3"] = 0
-                    guess_value["R3"] = 0
+                    # guess_index['R3'] = 0
+                    guess_value['R3'] = 0
                 else:
-                    target_position[2] = get_guess_point("R3")
+                    if guess_value['R3'] > -1:
+                        target_position[2] = get_guess_point('R3')
                 # 步兵4号
                 if all_filter_data.get('R4', False):
                     target_position[3] = return_xy_R('R4')
-                    guess_index["R4"] = 0
-                    guess_value["R4"] = 0
+                    # guess_index['R4'] = 0
+                    guess_value['R4'] = 0
                 else:
-                    target_position[3] = get_guess_point("R4")
+                    if guess_value['R4'] > -1:
+                        target_position[3] = get_guess_point('R4')
                 # 步兵5号
                 if all_filter_data.get('R5', False):
                     target_position[4] = return_xy_R('R5')
-                    guess_index["R5"] = 0
-                    guess_value["R5"] = 0
+                    # guess_index['R5'] = 0
+                    guess_value['R5'] = 0
                 else:
-                    target_position[4] = get_guess_point("R5")
+                    if guess_value['R5'] > -1:
+                        target_position[4] = get_guess_point('R5')
                 # 哨兵
                 if all_filter_data.get('R7', False):
                     target_position[5] = return_xy_R('R7')
-                    guess_index["R7"] = 0
-                    guess_value["R7"] = 0
+                    # guess_index['R7'] = 0
+                    guess_value['R7'] = 0
                 else:
-                    target_position[5] = get_guess_point("R7")
+                    target_position[5] = get_guess_point('R7')
                 seq = send_point(target_position, seq)
             
+            # 判断飞镖的目标是否切换，切换则尝试发动双倍易伤
+            if target != target_last and target != 0:
+                target_last = target
+                # 有双倍易伤机会，并且当前没有在双倍易伤
+                if double_vulnerability_chance > 0 and opponent_double_vulnerability == 0:
+                    time_e = time.time()
+                    # 发送时间间隔为10秒
+                    if time_e - time_s > 10:
+                        print("请求双倍触发")
+                        data = build_data_decision(chances_flag, state)
+                        packet, seq = build_send_packet(data, seq, [0x03, 0x01])
+                        # print(packet.hex(),chances_flag,state)
+                        ser1.write(packet)
+                        print("请求成功", chances_flag)
+                        # 更新标志位
+                        chances_flag += 1
+                        if chances_flag >= 3:
+                            chances_flag = 1
 
-            # 有双倍易伤机会，并且当前没有在双倍易伤
-            if double_vulnerability_chance > 0 and opponent_double_vulnerability == 0:
-                time_e = time.time()
-                # 发送时间间隔为10秒
-                if time_e - time_s > 10:
-                    print("请求双倍触发")
-                    data = build_data_decision(chances_flag, state)
-                    packet, seq = build_send_packet(data, seq, [0x03, 0x01])
-                    # print(packet.hex(),chances_flag,state)
-                    ser1.write(packet)
-                    print("请求成功", chances_flag)
-                    # 更新标志位
-                    chances_flag += 1
-                    if chances_flag >= 3:
-                        chances_flag = 1
-
-                    time_s = time.time()
+                        time_s = time.time()
         except Exception as r:
             print('未知错误 %s' % (r))
 
@@ -587,6 +642,13 @@ def ser_receive():
                         mark_progress['B4'] = progress_list[3]
                         mark_progress['B5'] = progress_list[4]
                         mark_progress['B7'] = progress_list[5]
+                        print("========== Serial Receive ==========")
+                        print("mark_progress_B1: ", mark_progress['B1'])
+                        print("mark_progress_B2: ", mark_progress['B2'])
+                        print("mark_progress_B3: ", mark_progress['B3'])
+                        print("mark_progress_B4: ", mark_progress['B4'])
+                        print("mark_progress_B5: ", mark_progress['B5'])
+                        print("mark_progress_B7: ", mark_progress['B7'])
                     else:
                         mark_progress['R1'] = progress_list[0]
                         mark_progress['R2'] = progress_list[1]
@@ -594,13 +656,21 @@ def ser_receive():
                         mark_progress['R4'] = progress_list[3]
                         mark_progress['R5'] = progress_list[4]
                         mark_progress['R7'] = progress_list[5]
+                        print("mark_progress_R1: ", mark_progress['R1'])
+                        print("mark_progress_R2: ", mark_progress['R2'])
+                        print("mark_progress_R3: ", mark_progress['R3'])
+                        print("mark_progress_R4: ", mark_progress['R4'])
+                        print("mark_progress_R5: ", mark_progress['R5'])
+                        print("mark_progress_R7: ", mark_progress['R7'])
                 if vulnerability_result is not None:
                     received_cmd_id2, received_data2, received_seq2 = vulnerability_result
                     received_data2 = list(received_data2)[0]
                     double_vulnerability_chance, opponent_double_vulnerability = Radar_decision(received_data2)
+                    print("double_vulnerability_chance: ", double_vulnerability_chance)
                 if target_result is not None:
                     received_cmd_id3, received_data3, received_seq3 = target_result
                     target = (list(received_data3)[1] & 0b1100000) >> 5
+                    print("target:", target)
 
                 # 从缓冲区中移除已解析的数据包
                 buffer = buffer[sof_index + len(packet_data):]
@@ -629,7 +699,7 @@ detector_next = YOLOv5Detector(weights_path_next, data='yaml/armor.yaml', conf_t
 
 ser1 = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)  # 串口
 # 图像测试模式（获取图像根据自己的设备，在）
-camera_mode = 'test'  # 'test':图片测试, 'video':视频测试, 'hik':海康相机, 'galaxy':大恒相机, 'usb':USB相机
+camera_mode = 'video'  # 'test':图片测试, 'video':视频测试, 'hik':海康相机, 'galaxy':大恒相机, 'usb':USB相机
 
 
 # 串口接收线程
@@ -643,7 +713,8 @@ thread_list.start()
 camera_image = None
 
 if camera_mode == 'test':
-    camera_image = cv2.imread('images/test_image.jpg')
+    # camera_image = cv2.imread('images/test_image.jpg')
+    camera_image = cv2.imread('images/test03.png')
 elif camera_mode == 'usb':
     thread_camera = threading.Thread(target=video_capture_get, daemon=True)
     thread_camera.start()
@@ -674,13 +745,10 @@ while True:
     det_time = 0
     img0 = camera_image.copy()
     ts = time.time()
-    start = time.perf_counter()
+
     # 第一层神经网络识别
     result0 = detector.predict(img0)
     det_time += 1
-    end = time.perf_counter()
-    diff = end - start
-    print("Time Diff: ", diff, "s")
     for detection in result0:
         cls, xywh, conf = detection
         if cls == 'car':
@@ -722,7 +790,7 @@ while True:
                             X_M = x_c
                             Y_M = y_c
                             # Z_M = 0
-                            filter.add_data(cls, X_M, Y_M)
+                            color_flag = filter.add_data(cls, X_M, Y_M, conf)
                         else:
                             # 不满足则继续套用R型高地层仿射变换矩阵
                             mapped_point = cv2.perspectiveTransform(camera_point.reshape(1, 1, 2), M_height_r)
@@ -736,7 +804,7 @@ while True:
                                 X_M = x_c
                                 Y_M = y_c
                                 # Z_M = 400
-                                filter.add_data(cls, X_M, Y_M)
+                                color_flag = filter.add_data(cls, X_M, Y_M, conf)
                             else:
                                 # 不满足则继续套用环形高地层仿射变换矩阵
                                 mapped_point = cv2.perspectiveTransform(camera_point.reshape(1, 1, 2), M_height_g)
@@ -750,22 +818,35 @@ while True:
                                     X_M = x_c
                                     Y_M = y_c
                                     # Z_M = 600
-                                    filter.add_data(cls, X_M, Y_M)
-                        
+                                    color_flag = filter.add_data(cls, X_M, Y_M, conf)
+                        cls0 = cls
+                        if color_flag == 1:
+                            if cls.startswith('R'):
+                                new_cls = cls.replace('R', 'B') 
+                            if cls.startswith('B'):
+                                new_cls = cls.replace('B', 'R')
+                            cls0 = new_cls
                         hide = hide_mask[y_c, x_c]
+                        # print('x_c: ', x_c)
+                        # print('y_c: ', y_c)
+                        # print(hide)
                         if hide[0] > hide[1] and hide[0] > hide[2]:
-                            guess_index[cls] = 1
+                            guess_index[cls0] = 1
                         if hide[1] > hide[2] and hide[1] > hide[0]:
-                            guess_index[cls] = 2
+                            guess_index[cls0] = 2
                         if hide[2] > hide[1] and hide[2] > hide[0]:
-                            guess_index[cls] = 3
+                            guess_index[cls0] = 3
                         else:
-                            guess_index[cls] = 0
+                            guess_index[cls0] = 0
 
 
     # 获取所有识别到的机器人坐标
     all_filter_data = filter.get_all_data()
     # print(all_filter_data_name)
+    print('guess index:')
+    print(guess_index)
+    print('guess value')
+    print(guess_value)
     if all_filter_data != {}:
         for name, xyxy in all_filter_data.items():
             if xyxy is not None:
