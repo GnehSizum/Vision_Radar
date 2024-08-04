@@ -713,8 +713,8 @@ thread_list.start()
 camera_image = None
 
 if camera_mode == 'test':
-    # camera_image = cv2.imread('images/test_image.jpg')
-    camera_image = cv2.imread('images/test03.png')
+    camera_image = cv2.imread('images/test_image.jpg')
+    # camera_image = cv2.imread('images/test03.png')
 elif camera_mode == 'usb':
     thread_camera = threading.Thread(target=video_capture_get, daemon=True)
     thread_camera.start()
